@@ -11,7 +11,5 @@
   <osc>
     <localHost>127.0.0.1</localHost>
     <localPort>57121</localPort>
-    <remoteHost>127.0.0.1</remoteHost>
-    <remotePort>57120</remotePort>
   </osc>
 </settings>
