@@ -1,31 +1,34 @@
-#include "networkPlayerApp.h"
+#include "videoPlayerApp.h"
 #include <algorithm>
 #include "Poco/ScopedLock.h"
 
-void networkPlayerApp::onVideoEnd(ofxOMXPlayerListenerEventData& e)
+void videoPlayerApp::onVideoEnd(ofxOMXPlayerListenerEventData& e)
 {
     ofLogVerbose(__func__) << " RECEIVED";
     blankScreen();
 }
 
-void networkPlayerApp::blankScreen()
+void videoPlayerApp::blankScreen()
 {
     screen_blanked = true;
+    front_lock.writeLock();
     front_player->setPaused(true);
+    front_lock.unlock();
 }
 
-void networkPlayerApp::onCharacterReceived(SSHKeyListenerEventData& e)
+void videoPlayerApp::onCharacterReceived(SSHKeyListenerEventData& e)
 {
     keyPressed((int)e.character);
 }
 
 //--------------------------------------------------------------
-void networkPlayerApp::setup()
+void videoPlayerApp::setup()
 {
     ofBackground(ofColor::black);
     //ofSetLogLevel(OF_LOG_VERBOSE);
     ofSetLogLevel("ofThread", OF_LOG_ERROR);
     consoleListener.setup(this);
+    osc_receiver.setup(config.osc_local_port);
 
     //this will let us just grab a video without recompiling
     ofDirectory dir(ofToDataPath(config.player_video_path, true));
@@ -35,7 +38,7 @@ void networkPlayerApp::setup()
         files = dir.getFiles();
         if (files.size() > 0) {
             ofxOMXPlayerSettings player_settings;
-            player_settings.videoPath = files[front_video_index].path();
+            player_settings.videoPath = files[0].path();
             player_settings.useHDMIForAudio = true;                         //default true
             player_settings.enableLooping = config.player_enable_looping;   //default true
             player_settings.doFlipTexture = config.player_flip_texture;
@@ -44,9 +47,11 @@ void networkPlayerApp::setup()
 
             front_player = ofxOMXPlayerPtr(new ofxOMXPlayer);
             front_player->setup(player_settings);
+            front_index = 0;
 
             back_player = ofxOMXPlayerPtr(new ofxOMXPlayer);
             back_player->setup(player_settings);
+            back_index = 0;
             back_player->setPaused(true);
         } else {
             ofLogError("Videos directory does not exist: " + dir.getAbsolutePath());
@@ -60,63 +65,73 @@ void networkPlayerApp::setup()
     blankScreen();
 }
 
-void networkPlayerApp::run()
+void videoPlayerApp::run()
 {
-    Poco::FastMutex::ScopedLock lock(mutex);
+    while(!back_lock.tryWriteLock())
+        Poco::Thread::yield();
 
-    back_player->loadMovie(files[back_video_index].path());
-    back_player->updatePixels();
+    back_player->loadMovie(files[back_index].path());
+    back_player->stepFrameForward();
     back_player->setPaused(false);
 
-    swap_players = true;
-}
+    while(!front_lock.tryWriteLock())
+        Poco::Thread::yield();
 
-void networkPlayerApp::loadMovie(uint_fast8_t index)
+    swap(back_player, front_player);
+    front_lock.unlock();
+    back_lock.unlock();
+    front_index = back_index.load();
+    if (screen_blanked) screen_blanked = false;
+
+}
+void videoPlayerApp::loadMovie(uint_fast8_t index)
 {
     if (index > files.size()-1) {
         ofLogError("!! File index out of bounds !!");
         return;
     }
 
-    {
-        Poco::FastMutex::ScopedLock lock(mutex);
-        back_video_index = index;
-    }
-
-    thread.start(*this);
+    back_index = index;
+    pool.start(*this);
 }
 
 //--------------------------------------------------------------
-void networkPlayerApp::update()
+void videoPlayerApp::update()
 {
-    Poco::FastMutex::ScopedLock lock(mutex);
-    if (swap_players) {
-        swap(front_player, back_player);
-        swap(front_video_index, back_video_index);
-        back_player->setPaused(true);
-        swap_players = false;
-        if (screen_blanked) screen_blanked = false;
-    }
-}
+    while (osc_receiver.hasWaitingMessages() ) {
+        ofxOscMessage m;
+        osc_receiver.getNextMessage( &m );
 
+        if ( m.getAddress() == "/loadMovie" ) {
+            int i = m.getArgAsInt32(0);
+            loadMovie(i);
+        }
 
-//--------------------------------------------------------------
-void networkPlayerApp::draw(){
-    if (screen_blanked) {
-        ofBackground(ofColor::black);
-    } else {
-        Poco::FastMutex::ScopedLock lock(mutex);
-        front_player->draw(0, 0, ofGetWidth(), ofGetHeight());
-        if (debug) {
-            stringstream info;
-            info << "\n" <<  "CURRENT MOVIE: " << files[front_video_index].path();
-            ofDrawBitmapStringHighlight(front_player->getInfo() + info.str(), 60, 60, ofColor(ofColor::black, 90), ofColor::yellow);
+        if (m.getAddress() == "/blankScreen" ) {
+            blankScreen();
         }
     }
 }
 
+
 //--------------------------------------------------------------
-void networkPlayerApp::keyPressed  (int key){
+void videoPlayerApp::draw(){
+    if (screen_blanked) {
+        ofBackground(ofColor::black);
+    } else {
+        front_lock.readLock();
+        front_player->draw(0, 0, ofGetWidth(), ofGetHeight());
+        if (debug) {
+            stringstream info;
+            info << "\n" <<  "CURRENT MOVIE: " << files[front_index].path();
+            ofDrawBitmapStringHighlight(front_player->getInfo() + info.str(), 60, 60, ofColor(ofColor::black, 90), ofColor::yellow);
+        }
+        front_lock.unlock();
+    }
+}
+
+//--------------------------------------------------------------
+void videoPlayerApp::keyPressed  (int key){
 
     ofLogVerbose(__func__) << "key: " << key;
     switch (key) {
@@ -158,9 +173,10 @@ void networkPlayerApp::keyPressed  (int key){
         break;
     case 'p':
         {
-            Poco::FastMutex::ScopedLock lock(mutex);
+            front_lock.writeLock();
             ofLogVerbose() << "pause: " << !front_player->isPaused();
             front_player->setPaused(!front_player->isPaused());
+            front_lock.unlock();
         }
         break;
     }
