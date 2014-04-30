@@ -1,0 +1,17 @@
+<settings>
+  <window>
+    <width>1280</width>
+    <height>720</height>
+  </window>
+  <player>
+    <videoPath>~/videos</videoPath>
+    <enableLooping>false</enableLooping>
+    <flipTexture>true</flipTexture>
+  </player>
+  <osc>
+    <localHost>127.0.0.1</localHost>
+    <localPort>57121</localPort>
+    <remoteHost>127.0.0.1</remoteHost>
+    <remotePort>57120</remotePort>
+  </osc>
+</settings>
