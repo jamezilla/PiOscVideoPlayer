@@ -3,7 +3,6 @@
 #include "ofMain.h"
 #include "ofxOMXPlayer.h"
 #include "ConsoleListener.h"
-#include "Poco/Mutex.h"
 
 struct networkPlayerAppConfig {
     int           window_width;
@@ -20,8 +19,7 @@ struct networkPlayerAppConfig {
 class networkPlayerApp
     : public ofBaseApp,
       public ofxOMXPlayerListener,
-      public SSHKeyListener,
-      public Poco::Runnable
+      public SSHKeyListener
 {
 
     typedef ofPtr<ofxOMXPlayer> ofxOMXPlayerPtr;
@@ -34,9 +32,8 @@ public:
           debug(false),
           video_count(0),
           front_video_index(0),
-          back_video_index(0),
-          swap_players(false)
-    {};
+          back_video_index(0)
+        {};
 
     void setup();
     void update();
@@ -47,7 +44,6 @@ public:
     void onCharacterReceived(SSHKeyListenerEventData& e);
     void loadMovie(uint_fast8_t index);
     void blankScreen();
-    void run();
 
     networkPlayerAppConfig  config;
     bool                    screen_blanked;
@@ -62,9 +58,4 @@ public:
 
     vector<ofFile>          files;
     ConsoleListener         consoleListener;
-
-    Poco::Thread            thread;
-    Poco::FastMutex         mutex;
-    bool                    swap_players;
-
 };

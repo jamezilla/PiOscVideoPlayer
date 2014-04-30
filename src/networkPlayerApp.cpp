@@ -60,17 +60,6 @@ void networkPlayerApp::setup()
     blankScreen();
 }
 
-void networkPlayerApp::run()
-{
-    Poco::FastMutex::ScopedLock lock(mutex);
-
-    back_player->loadMovie(files[back_video_index].path());
-    back_player->updatePixels();
-    back_player->setPaused(false);
-
-    swap_players = true;
-}
-
 void networkPlayerApp::loadMovie(uint_fast8_t index)
 {
     if (index > files.size()-1) {
@@ -78,25 +67,22 @@ void networkPlayerApp::loadMovie(uint_fast8_t index)
         return;
     }
 
-    {
-        Poco::FastMutex::ScopedLock lock(mutex);
-        back_video_index = index;
-    }
+    back_video_index = index;
+    back_player->loadMovie(files[back_video_index].path());
+    back_player->updatePixels();
+    back_player->setPaused(false);
 
-    thread.start(*this);
+    swap(front_player, back_player);
+    swap(front_video_index, back_video_index);
+    back_player->setPaused(true);
+
+    if (screen_blanked) screen_blanked = false;
 }
 
 //--------------------------------------------------------------
 void networkPlayerApp::update()
 {
-    Poco::FastMutex::ScopedLock lock(mutex);
-    if (swap_players) {
-        swap(front_player, back_player);
-        swap(front_video_index, back_video_index);
-        back_player->setPaused(true);
-        swap_players = false;
-        if (screen_blanked) screen_blanked = false;
-    }
+
 }
 
 
@@ -105,7 +91,6 @@ void networkPlayerApp::draw(){
     if (screen_blanked) {
         ofBackground(ofColor::black);
     } else {
-        Poco::FastMutex::ScopedLock lock(mutex);
         front_player->draw(0, 0, ofGetWidth(), ofGetHeight());
         if (debug) {
             stringstream info;
@@ -158,7 +143,6 @@ void networkPlayerApp::keyPressed  (int key){
         break;
     case 'p':
         {
-            Poco::FastMutex::ScopedLock lock(mutex);
             ofLogVerbose() << "pause: " << !front_player->isPaused();
             front_player->setPaused(!front_player->isPaused());
         }
