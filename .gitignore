@@ -2,4 +2,5 @@
 obj
 bin/libs
 bin/readMe.txt
-bin/videoPlayerApp
+bin/videoPlayerApp*
+bin/PiOsc*
