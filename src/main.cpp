@@ -3,6 +3,7 @@
 #include "videoPlayerApp.h"
 
 #define SETTINGS_XML_FILE              "settings.xml"
+#define DEFAULT_WINDOW_FULL_SCREEN     "false"
 #define DEFAULT_WINDOW_WIDTH           1280
 #define DEFAULT_WINDOW_HEIGHT          720
 #define DEFAULT_PLAYER_VIDEO_PATH      "videos"
@@ -37,6 +38,9 @@ int main()
 
     val = settings.getValue("settings:player:flipTexture",   DEFAULT_PLAYER_FLIP_VERTICAL);
     app_config.player_flip_texture = (val.compare("true") == 0);
+
+    val = settings.getValue("settings:window:fullScreen",     DEFAULT_WINDOW_FULL_SCREEN);
+    app_config.window_full_screen = (val.compare("true") == 0);
 
     ofSetupOpenGL(app_config.window_width, app_config.window_height, OF_WINDOW);
 

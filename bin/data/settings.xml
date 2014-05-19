@@ -1,5 +1,6 @@
 <settings>
   <window>
+    <fullScreen>true</fullScreen>
     <width>1280</width>
     <height>720</height>
   </window>

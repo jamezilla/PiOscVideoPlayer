@@ -7,8 +7,10 @@
 #include "ofxOsc.h"
 #include "Poco/RWLock.h"
 #include "Poco/ThreadPool.h"
+#include "RingBuffer.h"
 
 struct videoPlayerAppConfig {
+    bool          window_full_screen;
     int           window_width;
     int           window_height;
     string        player_video_path;
@@ -27,16 +29,16 @@ class videoPlayerApp
       public Poco::Runnable
 {
     typedef ofPtr<ofxOMXPlayer> ofxOMXPlayerPtr;
+    typedef RingBuffer<ofxOMXPlayerPtr, 8> VideoQueue;
+    typedef RingBuffer<std::string, 8> VideoFileNameQueue;
 
 public:
 
     videoPlayerApp(videoPlayerAppConfig _config)
         : config(_config),
+          hide_cursor(true),
           screen_blanked(true),
-          debug(false),
-          front_index(0),
-          back_index(0),
-          pool(1)
+          debug(false)
     {};
 
     void setup();
@@ -46,23 +48,22 @@ public:
     void onVideoEnd(ofxOMXPlayerListenerEventData& e);
     void onVideoLoop(ofxOMXPlayerListenerEventData& e){ /*empty*/ };
     void onCharacterReceived(SSHKeyListenerEventData& e);
-    void loadMovie(uint_fast8_t index);
+    void loadMovie(std::string& file_name);
     void blankScreen();
     void run();
 
-    videoPlayerAppConfig  config;
+    videoPlayerAppConfig    config;
+    bool                    hide_cursor;
     atomic<bool>            screen_blanked;
     bool                    debug;
-    ofxOMXPlayerPtr         front_player;
-    atomic<uint_fast8_t>    front_index;
-    ofxOMXPlayerPtr         back_player;
-    atomic<uint_fast8_t>    back_index;
-    vector<ofFile>          files;
+    ofxOMXPlayerPtr         player;
+    ofDirectory             video_dir;
+    VideoFileNameQueue      video_file_names;
+    VideoQueue              video_queue;
     ConsoleListener         consoleListener;
-    Poco::ThreadPool        pool;
-    Poco::RWLock            front_lock;
-    Poco::RWLock            back_lock;
 
+    Poco::Thread            loader;
+    Poco::RWLock            load_file_lock;
 
     ofxOscReceiver          osc_receiver;
     //ofxOscSender            osc_sender;

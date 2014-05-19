@@ -1,6 +1,6 @@
 #include "videoPlayerApp.h"
 #include <algorithm>
-#include "Poco/ScopedLock.h"
+#include <cassert>
 
 void videoPlayerApp::onVideoEnd(ofxOMXPlayerListenerEventData& e)
 {
@@ -11,9 +11,7 @@ void videoPlayerApp::onVideoEnd(ofxOMXPlayerListenerEventData& e)
 void videoPlayerApp::blankScreen()
 {
     screen_blanked = true;
-    front_lock.writeLock();
-    front_player->setPaused(true);
-    front_lock.unlock();
+    if (player) player->setPaused(true);
 }
 
 void videoPlayerApp::onCharacterReceived(SSHKeyListenerEventData& e)
@@ -27,72 +25,78 @@ void videoPlayerApp::setup()
     ofBackground(ofColor::black);
     //ofSetLogLevel(OF_LOG_VERBOSE);
     ofSetLogLevel("ofThread", OF_LOG_ERROR);
+    ofSetFullscreen(config.window_full_screen);
+
+    if (hide_cursor)
+        ofHideCursor();
+    else
+        ofShowCursor();
+
     consoleListener.setup(this);
     osc_receiver.setup(config.osc_local_port);
 
-    //this will let us just grab a video without recompiling
-    ofDirectory dir(ofToDataPath(config.player_video_path, true));
-    if (dir.exists()) {
-        dir.listDir();
-        dir.sort();
-        files = dir.getFiles();
-        if (files.size() > 0) {
-            ofxOMXPlayerSettings player_settings;
-            player_settings.videoPath = files[0].path();
-            player_settings.useHDMIForAudio = true;                         //default true
-            player_settings.enableLooping = config.player_enable_looping;   //default true
-            player_settings.doFlipTexture = config.player_flip_texture;
-            player_settings.enableTexture = true;                           //default true
-            player_settings.listener = this;                                //this app extends ofxOMXPlayerListener so it will receive events ;
-
-            front_player = ofxOMXPlayerPtr(new ofxOMXPlayer);
-            front_player->setup(player_settings);
-            front_index = 0;
-
-            back_player = ofxOMXPlayerPtr(new ofxOMXPlayer);
-            back_player->setup(player_settings);
-            back_index = 0;
-            back_player->setPaused(true);
-        } else {
-            ofLogError("Videos directory does not exist: " + dir.getAbsolutePath());
-            ofExit(2);
-        }
+    // do a quick check to make sure the videos directory exists
+    video_dir = ofToDataPath(config.player_video_path, true);
+    if (video_dir.exists()) {
+        video_dir.listDir();
     } else {
-        ofLogError("Videos directory does not exist: " + dir.getAbsolutePath());
+        ofLogError("Videos directory does not exist: " + video_dir.getAbsolutePath());
         ofExit(1);
     }
+
+    ofLogVerbose("--- starting loader thread");
+    loader.start(*this);
 
     blankScreen();
 }
 
 void videoPlayerApp::run()
 {
-    while(!back_lock.tryWriteLock())
-        Poco::Thread::yield();
+    std::string          file_name;
+    ofxOMXPlayerSettings player_settings;
 
-    back_player->loadMovie(files[back_index].path());
-    back_player->stepFrameForward();
-    back_player->setPaused(false);
+    // setup the player defaults
+    player_settings.useHDMIForAudio = true;                           //default true
+    player_settings.enableTexture   = true;                           //default true
+    player_settings.listener        = this;
 
-    while(!front_lock.tryWriteLock())
-        Poco::Thread::yield();
+    // TODO: lock config?
+    player_settings.enableLooping   = config.player_enable_looping;   //default true
+    player_settings.doFlipTexture   = config.player_flip_texture;
+    // TODO: unlock config?
 
-    swap(back_player, front_player);
-    front_lock.unlock();
-    back_lock.unlock();
-    front_index = back_index.load();
-    if (screen_blanked) screen_blanked = false;
 
+    // TODO: make this a settable condition so we can kill this thread in a destructor
+    while(true) {
+        if (video_file_names.pop(file_name)) {
+            player_settings.videoPath = file_name;
+            ofLogVerbose("--- got file name: " + file_name);
+
+            ofxOMXPlayerPtr new_player = ofxOMXPlayerPtr(new ofxOMXPlayer);
+            ofLogVerbose("--- constructed new player");
+
+            new_player->setup(player_settings);
+            ofLogVerbose("--- new video setup");
+
+            video_queue.push(new_player);
+            ofLogVerbose("--- video pushed to queue");
+        } else {
+            Poco::Thread::yield();
+        }
+    }
 }
-void videoPlayerApp::loadMovie(uint_fast8_t index)
+
+void videoPlayerApp::loadMovie(string& file_name )
 {
-    if (index > files.size()-1) {
-        ofLogError("!! File index out of bounds !!");
+    string file_path = video_dir.getAbsolutePath() + "/" + file_name;
+
+    if (!ofFile(file_path).exists()) {
+        ofLogError("!! File does not exist !!");
         return;
     }
 
-    back_index = index;
-    pool.start(*this);
+    ofLogNotice("--- queueing file name: " + file_path);
+    video_file_names.push(file_path);
 }
 
 //--------------------------------------------------------------
@@ -102,15 +106,48 @@ void videoPlayerApp::update()
         ofxOscMessage m;
         osc_receiver.getNextMessage( &m );
 
-        if ( m.getAddress() == "/loadMovie" ) {
-            int i = m.getArgAsInt32(0);
-            loadMovie(i);
-        }
-
         if (m.getAddress() == "/blankScreen" ) {
+            ofLogVerbose("got message: /blankScreen");
             blankScreen();
         }
+
+        if ( m.getAddress() == "/debug" ) {
+            ofLogVerbose("got message: /debug");
+            debug = !debug;
+        }
+
+        if ( m.getAddress() == "/fullScreen" ) {
+            ofLogVerbose("got message: /fullScreen");
+            ofToggleFullscreen();
+        }
+
+        if ( m.getAddress() == "/loadMovie" ) {
+            string file_name = m.getArgAsString(0);
+            ofLogVerbose("got message: /loadMovie " + file_name);
+            if (0 == file_name.compare("blankScreen"))
+                blankScreen();
+            else
+                loadMovie(file_name);
+        }
     }
+
+    bool swapped = false;
+    ofxOMXPlayerPtr next_player;
+
+    while(video_queue.pop(next_player)) {
+        ofLogVerbose("--- found player on queue");
+        swapped = true;
+        player = ofxOMXPlayerPtr(next_player);
+    }
+
+    if (swapped) {
+        // player->stepFrameForward();
+        ofLogVerbose("--- unpausing new player");
+        assert(player);
+        player->setPaused(false);
+        if (screen_blanked) screen_blanked = false;
+    }
+
 }
 
 
@@ -118,15 +155,17 @@ void videoPlayerApp::update()
 void videoPlayerApp::draw(){
     if (screen_blanked) {
         ofBackground(ofColor::black);
-    } else {
-        front_lock.readLock();
-        front_player->draw(0, 0, ofGetWidth(), ofGetHeight());
         if (debug) {
-            stringstream info;
-            info << "\n" <<  "CURRENT MOVIE: " << files[front_index].path();
-            ofDrawBitmapStringHighlight(front_player->getInfo() + info.str(), 60, 60, ofColor(ofColor::black, 90), ofColor::yellow);
+            ofDrawBitmapStringHighlight("screen blanked", 60, 60, ofColor(ofColor::black, 90), ofColor::yellow);
         }
-        front_lock.unlock();
+    } else {
+        assert(player);
+        player->draw(0, 0);
+        if (debug) {
+            ostringstream info;
+            info << "\n" <<  "CURRENT MOVIE: " << player->settings.videoPath;
+            ofDrawBitmapStringHighlight(player->getInfo() + info.str(), 60, 60, ofColor(ofColor::black, 90), ofColor::yellow);
+        }
     }
 }
 
@@ -135,48 +174,26 @@ void videoPlayerApp::keyPressed  (int key){
 
     ofLogVerbose(__func__) << "key: " << key;
     switch (key) {
-    case '0':
-        loadMovie(0);
-        break;
-    case '1':
-        loadMovie(1);
-        break;
-    case '2':
-        loadMovie(2);
-        break;
-    case '3':
-        loadMovie(3);
-        break;
-    case '4':
-        loadMovie(4);
-        break;
-    case '5':
-        loadMovie(5);
-        break;
-    case '6':
-        loadMovie(6);
-        break;
-    case '7':
-        loadMovie(7);
-        break;
-    case '8':
-        loadMovie(8);
-        break;
-    case '9':
-        loadMovie(9);
-        break;
     case 'b':
         blankScreen();
+        break;
+    case 'c':
+        hide_cursor = !hide_cursor;
+        if (hide_cursor)
+            ofHideCursor();
+        else
+            ofShowCursor();
         break;
     case 'd':
         debug = !debug;
         break;
+    case 'f':
+        ofToggleFullscreen();
+        break;
     case 'p':
-        {
-            front_lock.writeLock();
-            ofLogVerbose() << "pause: " << !front_player->isPaused();
-            front_player->setPaused(!front_player->isPaused());
-            front_lock.unlock();
+        if (player) {
+            ofLogVerbose() << "pause: " << !player->isPaused();
+            player->setPaused(!player->isPaused());
         }
         break;
     }
