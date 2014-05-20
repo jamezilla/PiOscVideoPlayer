@@ -64,7 +64,9 @@ public:
     void onCharacterReceived(SSHKeyListenerEventData& e);
     void run();
     void setCursorHidden(bool is_hidden);
+    void setPaused(bool is_paused);
     void setup();
+    void togglePaused();
     void update();
 
     videoPlayerAppConfig    config;

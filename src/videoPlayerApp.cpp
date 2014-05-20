@@ -11,9 +11,7 @@ void videoPlayerApp::onVideoEnd(ofxOMXPlayerListenerEventData& e)
 void videoPlayerApp::blankScreen()
 {
     screen_blanked = true;
-    // front_lock.writeLock();
-    // front_player->setPaused(true);
-    // front_lock.unlock();
+    setPaused(true);
 }
 
 void videoPlayerApp::onCharacterReceived(SSHKeyListenerEventData& e)
@@ -31,6 +29,24 @@ void videoPlayerApp::setCursorHidden(bool is_hidden)
 }
 
 
+void videoPlayerApp::setPaused(bool is_paused)
+{
+    front_lock.writeLock();
+    front_player->setPaused(is_paused);
+    front_lock.unlock();
+}
+
+void videoPlayerApp::togglePaused()
+{
+    front_lock.readLock();
+    bool pause_state = front_player->isPaused();
+    front_lock.unlock();
+
+    ofLogVerbose() << "pause: " << !pause_state;
+    setPaused(pause_state);
+}
+
+
 //--------------------------------------------------------------
 void videoPlayerApp::setup()
 {
@@ -39,6 +55,7 @@ void videoPlayerApp::setup()
     setCursorHidden(config.player_hide_cursor);
     ofSetLogLevel(OF_LOG_VERBOSE);
     ofSetLogLevel("ofThread", OF_LOG_ERROR);
+    ofSetLogLevel("Loader", OF_LOG_VERBOSE);
     consoleListener.setup(this);
     osc_receiver.setup(config.osc_local_port);
 
@@ -89,7 +106,7 @@ void videoPlayerApp::run()
 
     while(true) {
         if (loader_queue.pop(params)) {
-            ofLogVerbose("-- loading file: " + params->file.path());
+            ofLogVerbose("Loader") << ("-- loading file: " + params->file.path());
 
             back_player->loadMovie(params->file.path());
             back_player->stepFrameForward();
@@ -104,7 +121,8 @@ void videoPlayerApp::run()
             rx = params->rx;
             ry = params->ry;
             front_lock.unlock();
-            if (screen_blanked) screen_blanked = false;
+            screen_blanked = false;
+            back_player->setPaused(true);
         } else {
             Poco::Thread::yield();
         }
@@ -183,6 +201,9 @@ void videoPlayerApp::update()
 void videoPlayerApp::draw(){
     if (screen_blanked) {
         ofBackground(ofColor::black);
+        if (debug) {
+            ofDrawBitmapStringHighlight("screen blanked", 60, 60, ofColor(ofColor::black, 90), ofColor::yellow);
+        }
     } else {
         ofPushMatrix();
         ofRotateX(rx);
@@ -214,12 +235,7 @@ void videoPlayerApp::keyPressed  (int key){
         debug = !debug;
         break;
     case 'p':
-        {
-            front_lock.writeLock();
-            ofLogVerbose() << "pause: " << !front_player->isPaused();
-            front_player->setPaused(!front_player->isPaused());
-            front_lock.unlock();
-        }
+        togglePaused();
         break;
     }
 }
