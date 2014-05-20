@@ -8,6 +8,7 @@
     <enableLooping>false</enableLooping>
     <flipTexture>true</flipTexture>
     <fullScreen>true</fullScreen>
+    <hidCursor>true</hidCursor>
   </player>
   <osc>
     <localHost>127.0.0.1</localHost>

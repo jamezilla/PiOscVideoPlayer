@@ -17,6 +17,7 @@ struct videoPlayerAppConfig {
     bool          player_enable_looping;
     bool          player_flip_texture;
     bool          player_full_screen;
+    bool          player_hide_cursor;
     uint_fast16_t osc_local_port;
     string        osc_local_host;
     uint_fast16_t osc_remote_port;
@@ -47,26 +48,29 @@ public:
         : config(_config),
           screen_blanked(true),
           debug(false),
+          hide_cursor(true),
           x(0),
           y(0),
           rx(0),
           ry(0)
     {};
 
-    void setup();
-    void update();
+    void blankScreen();
     void draw();
     void keyPressed(int key);
+    void loadMovie(std::string file_name, float x = 0, float y = 0, float rx = 0, float ry = 0);
     void onVideoEnd(ofxOMXPlayerListenerEventData& e);
     void onVideoLoop(ofxOMXPlayerListenerEventData& e){ /*empty*/ };
     void onCharacterReceived(SSHKeyListenerEventData& e);
-    void loadMovie(std::string file_name, float x = 0, float y = 0, float rx = 0, float ry = 0);
-    void blankScreen();
     void run();
+    void setCursorHidden(bool is_hidden);
+    void setup();
+    void update();
 
     videoPlayerAppConfig    config;
     atomic<bool>            screen_blanked;
     bool                    debug;
+    bool                    hide_cursor;
     ofxOMXPlayerPtr         front_player;
     ofxOMXPlayerPtr         back_player;
     std::map<std::string, ofFile> files;

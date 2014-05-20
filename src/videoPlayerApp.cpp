@@ -21,12 +21,23 @@ void videoPlayerApp::onCharacterReceived(SSHKeyListenerEventData& e)
     keyPressed((int)e.character);
 }
 
+void videoPlayerApp::setCursorHidden(bool is_hidden)
+{
+    hide_cursor = is_hidden;
+    if (hide_cursor)
+        ofHideCursor();
+    else
+        ofShowCursor();
+}
+
+
 //--------------------------------------------------------------
 void videoPlayerApp::setup()
 {
     ofBackground(ofColor::black);
     ofSetFullscreen(config.player_full_screen);
-    ofSetLogLevel(OF_LOG_NOTICE);
+    setCursorHidden(config.player_hide_cursor);
+    ofSetLogLevel(OF_LOG_VERBOSE);
     ofSetLogLevel("ofThread", OF_LOG_ERROR);
     consoleListener.setup(this);
     osc_receiver.setup(config.osc_local_port);
@@ -138,6 +149,11 @@ void videoPlayerApp::update()
             ofToggleFullscreen();
         }
 
+        if ( m.getAddress() == "/hideCursor" ) {
+            ofLogVerbose("got message: /hideCursor");
+            ofToggleFullscreen();
+        }
+
         if ( m.getAddress() == "/loadMovie" ) {
             string file_name = m.getArgAsString(0);
             ofLogVerbose("got message: /loadMovie " + file_name);
@@ -188,38 +204,11 @@ void videoPlayerApp::keyPressed  (int key){
 
     ofLogVerbose(__func__) << "key: " << key;
     switch (key) {
-    // case '0':
-    //     loadMovie(0);
-    //     break;
-    // case '1':
-    //     loadMovie(1);
-    //     break;
-    // case '2':
-    //     loadMovie(2);
-    //     break;
-    // case '3':
-    //     loadMovie(3);
-    //     break;
-    // case '4':
-    //     loadMovie(4);
-    //     break;
-    // case '5':
-    //     loadMovie(5);
-    //     break;
-    // case '6':
-    //     loadMovie(6);
-    //     break;
-    // case '7':
-    //     loadMovie(7);
-    //     break;
-    // case '8':
-    //     loadMovie(8);
-    //     break;
-    // case '9':
-    //     loadMovie(9);
-    //     break;
     case 'b':
         blankScreen();
+        break;
+    case 'c':
+        setCursorHidden(!hide_cursor);
         break;
     case 'd':
         debug = !debug;
