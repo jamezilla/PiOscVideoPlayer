@@ -11,9 +11,9 @@ void videoPlayerApp::onVideoEnd(ofxOMXPlayerListenerEventData& e)
 void videoPlayerApp::blankScreen()
 {
     screen_blanked = true;
-    front_lock.writeLock();
-    front_player->setPaused(true);
-    front_lock.unlock();
+    // front_lock.writeLock();
+    // front_player->setPaused(true);
+    // front_lock.unlock();
 }
 
 void videoPlayerApp::onCharacterReceived(SSHKeyListenerEventData& e)
@@ -25,7 +25,8 @@ void videoPlayerApp::onCharacterReceived(SSHKeyListenerEventData& e)
 void videoPlayerApp::setup()
 {
     ofBackground(ofColor::black);
-    //ofSetLogLevel(OF_LOG_VERBOSE);
+    ofSetFullscreen(config.player_full_screen);
+    ofSetLogLevel(OF_LOG_NOTICE);
     ofSetLogLevel("ofThread", OF_LOG_ERROR);
     consoleListener.setup(this);
     osc_receiver.setup(config.osc_local_port);
@@ -73,13 +74,13 @@ void videoPlayerApp::setup()
 
 void videoPlayerApp::run()
 {
-    ofFile file;
+    loaderParamsPtr params;
 
     while(true) {
-        if (file_queue.pop(file)) {
-            ofLogVerbose("-- loading file: " + file.path());
+        if (loader_queue.pop(params)) {
+            ofLogVerbose("-- loading file: " + params->file.path());
 
-            back_player->loadMovie(file.path());
+            back_player->loadMovie(params->file.path());
             back_player->stepFrameForward();
             back_player->setPaused(false);
 
@@ -87,22 +88,31 @@ void videoPlayerApp::run()
                 Poco::Thread::yield();
 
             swap(back_player, front_player);
+            x  = params->x;
+            y  = params->y;
+            rx = params->rx;
+            ry = params->ry;
             front_lock.unlock();
-            back_player->setPaused(true);
-
             if (screen_blanked) screen_blanked = false;
         } else {
             Poco::Thread::yield();
         }
     }
 }
-void videoPlayerApp::loadMovie(std::string file_name)
+
+void videoPlayerApp::loadMovie(std::string _file_name, float _x, float _y, float _rx, float _ry)
 {
     try {
-        file_queue.push(files.at(file_name));
+        loaderParamsPtr dpp = loaderParamsPtr(new loaderParams);
+        dpp->file = files.at(_file_name);
+        dpp->x    = _x;
+        dpp->y    = _y;
+        dpp->rx   = _rx;
+        dpp->ry   = _ry;
+        loader_queue.push(dpp);
     }
     catch (const std::out_of_range& oor) {
-        ofLogError("Out of range error: " + file_name);
+        ofLogError("Out of range error: " + _file_name);
     }
 }
 
@@ -133,8 +143,21 @@ void videoPlayerApp::update()
             ofLogVerbose("got message: /loadMovie " + file_name);
             if (0 == file_name.compare("blankScreen"))
                 blankScreen();
-            else
-                loadMovie(file_name);
+            else {
+                float x  = m.getArgAsFloat(1);
+                float y  = m.getArgAsFloat(2);
+                float rx = m.getArgAsFloat(3);
+                float ry = m.getArgAsFloat(4);
+                loadMovie(file_name, x, y, rx, ry);
+            }
+        }
+
+        if ( m.getAddress() == "/position" ) {
+            ofLogVerbose("got message: /position");
+            x  = m.getArgAsFloat(0);
+            y  = m.getArgAsFloat(1);
+            rx = m.getArgAsFloat(2);
+            ry = m.getArgAsFloat(3);
         }
     }
 }
@@ -145,14 +168,18 @@ void videoPlayerApp::draw(){
     if (screen_blanked) {
         ofBackground(ofColor::black);
     } else {
+        ofPushMatrix();
+        ofRotateX(rx);
+        ofRotateY(ry);
         front_lock.readLock();
-        front_player->draw(0, 0);
+        front_player->draw(x, y);
         if (debug) {
             stringstream info;
             info << "\n" <<  "CURRENT MOVIE: " << front_player->settings.videoPath;
             ofDrawBitmapStringHighlight(front_player->getInfo() + info.str(), 60, 60, ofColor(ofColor::black, 90), ofColor::yellow);
         }
         front_lock.unlock();
+        ofPopMatrix();
     }
 }
 

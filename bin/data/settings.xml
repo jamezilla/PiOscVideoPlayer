@@ -7,6 +7,7 @@
     <videoPath>~/videos</videoPath>
     <enableLooping>false</enableLooping>
     <flipTexture>true</flipTexture>
+    <fullScreen>true</fullScreen>
   </player>
   <osc>
     <localHost>127.0.0.1</localHost>

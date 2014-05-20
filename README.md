@@ -1,16 +1,23 @@
 # Compilation
 
-The build scripts expect a directory layout where openframeworks is a peer folder at the same level as videoPlayerApp.
+This project has c++11 features. As of 2014-05-19, raspian doesn't come with a c++11 compiler. To get one and set it as the default compiler:
 
-NOTE: the videoPlayerApp folder is not inside the the openframeworks
+    $ sudo apt-get install g++-4.7
+    $ sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-4.6 60 --slave /usr/bin/g++ g++ /usr/bin/g++-4.6
+    $ sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-4.7 40 --slave /usr/bin/g++ g++ /usr/bin/g++-4.7
+    $ sudo update-alternatives --config gcc
+
+The build scripts expect a directory layout where openframeworks is a peer folder at the same level as PiOscVideoPlayer.
+
+NOTE: the PiOscVideoPlayer folder is not inside the the openframeworks
 folder (usually two folders deep in "apps"). If you want to move the
-videoPlayerApp folder somewhere else you can adjust the OF_ROOT
+PiOscVideoPlayer folder somewhere else you can adjust the OF_ROOT
 variable in config.make to point to the location of the root of the
 openframeworks framework source.
 
 Compiling:
 
-    $ cd /path-to-videoPlayerApp
+    $ cd /path-to-PiOscVideoPlayer
     $ make
 
 # Configuration
@@ -32,12 +39,27 @@ you have SSH turned on for your pi.
 If you still insist:
 
     $ sudo apt-get install upstart
-    $ sudo cp /path-to-videoPlayerApp/scripts/videoPlayerApp.conf /etc/init/
+    $ sudo cp /path-to-PiOscVideoPlayer/scripts/PiOscVideoPlayer.conf /etc/init/
     $ sudo reboot
 
 ## Running
 
-    $ sudo start videoPlayerApp
-    $ sudo stop videoPlayerApp
-    $ sudo restart videoPlayerApp
-    $ sudo status videoPlayerApp
+    $ sudo start PiOscVideoPlayer
+    $ sudo stop PiOscVideoPlayer
+    $ sudo restart PiOscVideoPlayer
+    $ sudo status PiOscVideoPlayer
+
+## Troubleshooting
+
+If you see errors in /var/log/upstart/PiOscVideoPlayer.log like:
+
+```
+* failed to open vchiq instance
+```
+
+...here's the rememdy:
+
+    $ sudo su -
+    $ echo 'SUBSYSTEM=="vchiq",GROUP="video",MODE="0666"' > /etc/udev/rules.d/10-vchiq-permissions.rules
+    $ usermod -a -G video pi
+    $ exit
